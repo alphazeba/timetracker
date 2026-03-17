@@ -58,10 +58,19 @@ fn db_path() -> PathBuf {
 }
 
 /// `[HH:MM:SS(dimmed) | HH:MM:SS(color)]` — `duration_color` lets callers pick pink vs yellow.
-fn fmt_time_range(from: DateTime<Utc>, to: DateTime<Utc>, duration_color: fn(&str) -> String) -> String {
+fn fmt_time_range(
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    duration_color: fn(&str) -> String,
+) -> String {
     let from_str = from.with_timezone(&Local).format("%H:%M:%S").to_string();
     let secs = (to - from).num_seconds().abs();
-    let dur_str = format!("{:02}:{:02}:{:02}", secs / 3600, (secs % 3600) / 60, secs % 60);
+    let dur_str = format!(
+        "{:02}:{:02}:{:02}",
+        secs / 3600,
+        (secs % 3600) / 60,
+        secs % 60
+    );
     format!("[{} | {}]", from_str.dimmed(), duration_color(&dur_str))
 }
 
@@ -75,14 +84,27 @@ fn note_range(from: DateTime<Utc>, to: DateTime<Utc>) -> String {
 
 fn print_notes(session_start: DateTime<Utc>, notes: &[Note]) {
     for note in notes {
-        println!("  {} {}", note_range(session_start, note.created_at), note.text.yellow());
+        println!(
+            "  {} {}",
+            note_range(session_start, note.created_at),
+            note.text.yellow()
+        );
     }
 }
 
 fn print_session(session: &Session, now: DateTime<Utc>) {
     let end = session.end_time.unwrap_or(now);
-    let running = if session.end_time.is_none() { " [running]".green().to_string() } else { String::new() };
-    println!("{} {}{}", timer_range(session.start_time, end), session.title.cyan(), running);
+    let running = if session.end_time.is_none() {
+        " [running]".green().to_string()
+    } else {
+        String::new()
+    };
+    println!(
+        "{} {}{}",
+        timer_range(session.start_time, end),
+        session.title.cyan(),
+        running
+    );
     print_notes(session.start_time, &session.notes);
 }
 
@@ -111,13 +133,25 @@ fn main() {
             match start_timer(&db, &title, now) {
                 Ok(result) => {
                     if let Some(s) = result.stopped_session {
-                        println!("{} \"{}\" (started {})",
-                            "Stopped".yellow(), s.title.cyan(),
-                            s.start_time.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S"));
+                        println!(
+                            "{} \"{}\" (started {})",
+                            "Stopped".yellow(),
+                            s.title.cyan(),
+                            s.start_time
+                                .with_timezone(&Local)
+                                .format("%Y-%m-%d %H:%M:%S")
+                        );
                     }
-                    println!("{} \"{}\" at {}",
-                        "Started".green(), result.new_session.title.cyan(),
-                        result.new_session.start_time.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S"));
+                    println!(
+                        "{} \"{}\" at {}",
+                        "Started".green(),
+                        result.new_session.title.cyan(),
+                        result
+                            .new_session
+                            .start_time
+                            .with_timezone(&Local)
+                            .format("%Y-%m-%d %H:%M:%S")
+                    );
                 }
                 Err(e) => handle_error(e),
             }
@@ -126,7 +160,12 @@ fn main() {
         Command::Stop => match stop_timer(&db, now) {
             Ok(session) => {
                 let end = session.end_time.unwrap_or(now);
-                println!("{} \"{}\" {}", "Stopped".yellow(), session.title.cyan(), timer_range(session.start_time, end));
+                println!(
+                    "{} \"{}\" {}",
+                    "Stopped".yellow(),
+                    session.title.cyan(),
+                    timer_range(session.start_time, end)
+                );
                 print_notes(session.start_time, &session.notes);
             }
             Err(e) => handle_error(e),
@@ -143,7 +182,12 @@ fn main() {
                         .find(|s| s.end_time.is_none())
                         .map(|s| s.start_time);
                     if let Some(start) = start {
-                        println!("{} {} {}", "Note saved:".green(), note_range(start, note.created_at), note.text.yellow());
+                        println!(
+                            "{} {} {}",
+                            "Note saved:".green(),
+                            note_range(start, note.created_at),
+                            note.text.yellow()
+                        );
                     } else {
                         println!("{} {}", "Note saved:".green(), note.text.yellow());
                     }
@@ -152,16 +196,25 @@ fn main() {
             }
         }
 
-        Command::List { days, title, date, all } => {
+        Command::List {
+            days,
+            title,
+            date,
+            all,
+        } => {
             let (since, latest) = if all {
                 (None, None)
             } else if let Some(date_str) = date {
                 match NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
                     Ok(d) => {
-                        let since = Local.from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                            .single().map(|dt| dt.with_timezone(&Utc));
-                        let latest = Local.from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
-                            .single().map(|dt| dt.with_timezone(&Utc));
+                        let since = Local
+                            .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
+                            .single()
+                            .map(|dt| dt.with_timezone(&Utc));
+                        let latest = Local
+                            .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
+                            .single()
+                            .map(|dt| dt.with_timezone(&Utc));
                         (since, latest)
                     }
                     Err(_) => {
@@ -170,10 +223,20 @@ fn main() {
                     }
                 }
             } else {
-                (Some(now - chrono::Duration::hours(days.unwrap_or(1) as i64 * 24)), None)
+                (
+                    Some(now - chrono::Duration::hours(days.unwrap_or(1) as i64 * 24)),
+                    None,
+                )
             };
 
-            match list_sessions(&db, ListOptions { title_filter: title, since, latest }) {
+            match list_sessions(
+                &db,
+                ListOptions {
+                    title_filter: title,
+                    since,
+                    latest,
+                },
+            ) {
                 Ok(sessions) if sessions.is_empty() => println!("No sessions found."),
                 Ok(sessions) => sessions.iter().for_each(|s| print_session(s, now)),
                 Err(e) => handle_error(e),

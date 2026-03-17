@@ -3,7 +3,9 @@
 use std::sync::Mutex;
 use tauri::State;
 use time_tracker_lib::Database;
-use time_tracker_tauri::{do_list, do_note, do_start, do_stop, AppState, FilterOptions, SessionDto, db_path};
+use time_tracker_tauri::{
+    db_path, do_list, do_note, do_start, do_stop, AppState, FilterOptions, SessionDto,
+};
 
 #[tauri::command]
 fn cmd_start(title: String, state: State<AppState>) -> Result<String, String> {
@@ -29,7 +31,9 @@ fn main() {
     let db = Database::open(&db_path()).expect("failed to open database");
     tauri::Builder::default()
         .manage(AppState(Mutex::new(db)))
-        .invoke_handler(tauri::generate_handler![cmd_start, cmd_stop, cmd_note, cmd_list])
+        .invoke_handler(tauri::generate_handler![
+            cmd_start, cmd_stop, cmd_note, cmd_list
+        ])
         .run(tauri::generate_context!())
         .expect("error running tauri app");
 }

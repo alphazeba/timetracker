@@ -93,14 +93,23 @@ impl App {
 }
 
 fn fmt_duration(secs: i64) -> String {
-    format!("{:02}:{:02}:{:02}", secs / 3600, (secs % 3600) / 60, secs % 60)
+    format!(
+        "{:02}:{:02}:{:02}",
+        secs / 3600,
+        (secs % 3600) / 60,
+        secs % 60
+    )
 }
 
 fn render(f: &mut ratatui::Frame, app: &App) {
     let now = Utc::now();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
         .split(f.area());
 
     // ── session list — oldest first so newest is at the bottom ────────────────
@@ -109,7 +118,11 @@ fn render(f: &mut ratatui::Frame, app: &App) {
         let end = s.end_time.unwrap_or(now);
         let secs = (end - s.start_time).num_seconds().abs();
         let running = s.end_time.is_none();
-        let start_str = s.start_time.with_timezone(&Local).format("%H:%M:%S").to_string();
+        let start_str = s
+            .start_time
+            .with_timezone(&Local)
+            .format("%H:%M:%S")
+            .to_string();
         all_lines.push(Line::from(vec![
             Span::styled(
                 format!("[{} | {}] ", start_str, fmt_duration(secs)),
@@ -117,11 +130,17 @@ fn render(f: &mut ratatui::Frame, app: &App) {
             ),
             Span::styled(
                 s.title.clone(),
-                Style::default().fg(Color::Cyan)
-                    .add_modifier(if running { Modifier::BOLD } else { Modifier::empty() }),
+                Style::default().fg(Color::Cyan).add_modifier(if running {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
             ),
-            if running { Span::styled(" [running]", Style::default().fg(Color::Green)) }
-            else { Span::raw("") },
+            if running {
+                Span::styled(" [running]", Style::default().fg(Color::Green))
+            } else {
+                Span::raw("")
+            },
         ]));
         for note in &s.notes {
             let offset = (note.created_at - s.start_time).num_seconds().abs();
@@ -149,16 +168,14 @@ fn render(f: &mut ratatui::Frame, app: &App) {
     // ── input / help bar ──────────────────────────────────────────────────────
     let (title, content) = match &app.mode {
         Mode::Input(InputAction::Start) => (" Start timer — title ", app.input.as_str()),
-        Mode::Input(InputAction::Note)  => (" Add note ", app.input.as_str()),
+        Mode::Input(InputAction::Note) => (" Add note ", app.input.as_str()),
         Mode::Normal => (" Keys ", "s=start  x=stop  n=note  q=quit"),
     };
-    let para = Paragraph::new(content)
-        .block(Block::default().borders(Borders::ALL).title(title));
+    let para = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(para, chunks[1]);
 
     // ── status bar ────────────────────────────────────────────────────────────
-    let status = Paragraph::new(app.status.as_str())
-        .style(Style::default().fg(Color::DarkGray));
+    let status = Paragraph::new(app.status.as_str()).style(Style::default().fg(Color::DarkGray));
     f.render_widget(status, chunks[2]);
 }
 
@@ -197,7 +214,7 @@ fn main() -> io::Result<()> {
                             if !text.is_empty() {
                                 match &app.mode {
                                     Mode::Input(InputAction::Start) => app.handle_start(&text),
-                                    Mode::Input(InputAction::Note)  => app.handle_note(&text),
+                                    Mode::Input(InputAction::Note) => app.handle_note(&text),
                                     _ => {}
                                 }
                             }
@@ -208,7 +225,9 @@ fn main() -> io::Result<()> {
                             app.input.clear();
                             app.mode = Mode::Normal;
                         }
-                        KeyCode::Backspace => { app.input.pop(); }
+                        KeyCode::Backspace => {
+                            app.input.pop();
+                        }
                         KeyCode::Char(c) if key.modifiers != KeyModifiers::CONTROL => {
                             app.input.push(c);
                         }

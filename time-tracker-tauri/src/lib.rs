@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, TimeZone, Local, Utc};
+use chrono::{Local, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -60,10 +60,14 @@ pub fn do_list(db: &Database, filter: FilterOptions) -> Result<Vec<SessionDto>, 
     } else if let Some(date_str) = filter.date {
         match NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
             Ok(d) => {
-                let since = Local.from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                    .single().map(|dt| dt.with_timezone(&Utc));
-                let latest = Local.from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
-                    .single().map(|dt| dt.with_timezone(&Utc));
+                let since = Local
+                    .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
+                    .single()
+                    .map(|dt| dt.with_timezone(&Utc));
+                let latest = Local
+                    .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
+                    .single()
+                    .map(|dt| dt.with_timezone(&Utc));
                 (since, latest)
             }
             Err(_) => return Err("Invalid date format. Use YYYY-MM-DD.".to_string()),
@@ -73,14 +77,27 @@ pub fn do_list(db: &Database, filter: FilterOptions) -> Result<Vec<SessionDto>, 
         (Some(now - chrono::Duration::hours(n * 24)), None)
     };
 
-    list_sessions(db, ListOptions { title_filter: filter.title, since, latest })
-        .map(|sessions| {
-            sessions.into_iter().map(|s| {
-                let notes = s.notes.iter().map(|n| NoteDto {
-                    text: n.text.clone(),
-                    created_at_ms: n.created_at.timestamp_millis(),
-                    offset_ms: (n.created_at - s.start_time).num_milliseconds(),
-                }).collect();
+    list_sessions(
+        db,
+        ListOptions {
+            title_filter: filter.title,
+            since,
+            latest,
+        },
+    )
+    .map(|sessions| {
+        sessions
+            .into_iter()
+            .map(|s| {
+                let notes = s
+                    .notes
+                    .iter()
+                    .map(|n| NoteDto {
+                        text: n.text.clone(),
+                        created_at_ms: n.created_at.timestamp_millis(),
+                        offset_ms: (n.created_at - s.start_time).num_milliseconds(),
+                    })
+                    .collect();
                 SessionDto {
                     running: s.end_time.is_none(),
                     start_time_ms: s.start_time.timestamp_millis(),
@@ -88,7 +105,8 @@ pub fn do_list(db: &Database, filter: FilterOptions) -> Result<Vec<SessionDto>, 
                     title: s.title,
                     notes,
                 }
-            }).collect()
-        })
-        .map_err(|e| e.to_string())
+            })
+            .collect()
+    })
+    .map_err(|e| e.to_string())
 }

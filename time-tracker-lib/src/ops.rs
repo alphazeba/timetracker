@@ -21,8 +21,9 @@ fn load_notes(db: &Database, session_start_ms: i64) -> Result<Vec<Note>> {
         .map(|r| {
             let (created_at_ms, ss_ms, text) = r?;
             Ok(Note {
-                session_start: DateTime::from_timestamp_millis(ss_ms)
-                    .ok_or_else(|| Error::ExternalError("invalid session_start timestamp".into()))?,
+                session_start: DateTime::from_timestamp_millis(ss_ms).ok_or_else(|| {
+                    Error::ExternalError("invalid session_start timestamp".into())
+                })?,
                 text,
                 created_at: DateTime::from_timestamp_millis(created_at_ms)
                     .ok_or_else(|| Error::ExternalError("invalid created_at timestamp".into()))?,
