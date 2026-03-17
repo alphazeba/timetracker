@@ -92,6 +92,10 @@ fn print_notes(session_start: DateTime<Utc>, notes: &[Note]) {
     }
 }
 
+fn print_date_header(date: chrono::NaiveDate) {
+    println!("{}", format!("── {} ──", date.format("%Y-%m-%d")).dimmed());
+}
+
 fn print_session(session: &Session, now: DateTime<Utc>) {
     let end = session.end_time.unwrap_or(now);
     let running = if session.end_time.is_none() {
@@ -238,7 +242,19 @@ fn main() {
                 },
             ) {
                 Ok(sessions) if sessions.is_empty() => println!("No sessions found."),
-                Ok(sessions) => sessions.iter().for_each(|s| print_session(s, now)),
+                Ok(mut sessions) => {
+                    // sessions come back DESC; reverse to oldest-first for display
+                    sessions.reverse();
+                    let mut last_date: Option<chrono::NaiveDate> = None;
+                    for s in &sessions {
+                        let date = s.start_time.with_timezone(&Local).date_naive();
+                        if last_date != Some(date) {
+                            print_date_header(date);
+                            last_date = Some(date);
+                        }
+                        print_session(s, now);
+                    }
+                }
                 Err(e) => handle_error(e),
             }
         }

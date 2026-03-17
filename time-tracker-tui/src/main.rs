@@ -37,6 +37,8 @@ struct App {
     input: String,
     mode: Mode,
     status: String,
+    scroll_offset: u16,
+    user_scrolled: bool,
 }
 
 impl App {
@@ -47,6 +49,8 @@ impl App {
             input: String::new(),
             mode: Mode::Normal,
             status: String::new(),
+            scroll_offset: 0,
+            user_scrolled: false,
         };
         app.refresh();
         app
@@ -54,41 +58,52 @@ impl App {
 
     fn refresh(&mut self) {
         self.sessions = list_sessions(&self.db, ListOptions::default()).unwrap_or_default();
+        if !self.user_scrolled {
+            self.scroll_offset = 0;
+        }
+    }
+
+    fn refresh_and_jump(&mut self) {
+        self.user_scrolled = false;
+        self.refresh();
     }
 
     fn active_session(&self) -> Option<&Session> {
         self.sessions.iter().find(|s| s.end_time.is_none())
     }
 
-    fn handle_start(&mut self, title: &str) {
-        let now = Utc::now();
-        match start_timer(&self.db, title, now) {
-            Ok(r) => {
-                self.status = format!("Started \"{}\"", r.new_session.title);
-                self.refresh();
+    /// Run a DB result: on success set status and jump to bottom; on error set status.
+    fn exec<T, E: std::fmt::Display>(&mut self, result: Result<T, E>, ok_msg: impl Into<String>) {
+        match result {
+            Ok(_) => {
+                self.status = ok_msg.into();
+                self.refresh_and_jump();
             }
             Err(e) => self.status = format!("Error: {e}"),
         }
+    }
+
+    fn handle_start(&mut self, title: &str) {
+        let result = start_timer(&self.db, title, Utc::now())
+            .map(|r| format!("Started \"{}\"", r.new_session.title));
+        let msg = result.as_deref().unwrap_or("").to_string();
+        self.exec(result.map(|_| ()), msg);
     }
 
     fn handle_stop(&mut self) {
-        match stop_timer(&self.db, Utc::now()) {
-            Ok(s) => {
-                self.status = format!("Stopped \"{}\"", s.title);
-                self.refresh();
-            }
-            Err(e) => self.status = format!("Error: {e}"),
-        }
+        let result = stop_timer(&self.db, Utc::now())
+            .map(|s| format!("Stopped \"{}\"", s.title));
+        let msg = result.as_deref().unwrap_or("").to_string();
+        self.exec(result.map(|_| ()), msg);
     }
 
     fn handle_note(&mut self, text: &str) {
-        match add_note(&self.db, text, Utc::now()) {
-            Ok(_) => {
-                self.status = "Note saved".to_string();
-                self.refresh();
-            }
-            Err(e) => self.status = format!("Error: {e}"),
-        }
+        self.exec(add_note(&self.db, text, Utc::now()), "Note saved");
+    }
+
+    fn cancel_input(&mut self) {
+        self.input.clear();
+        self.mode = Mode::Normal;
     }
 }
 
@@ -114,7 +129,17 @@ fn render(f: &mut ratatui::Frame, app: &App) {
 
     // ── session list — oldest first so newest is at the bottom ────────────────
     let mut all_lines: Vec<Line> = Vec::new();
+    let mut last_date: Option<chrono::NaiveDate> = None;
     for s in app.sessions.iter().rev() {
+        let date = s.start_time.with_timezone(&Local).date_naive();
+        if last_date != Some(date) {
+            let label = format!("── {} ──", date.format("%Y-%m-%d"));
+            all_lines.push(Line::from(Span::styled(
+                label,
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            )));
+            last_date = Some(date);
+        }
         let end = s.end_time.unwrap_or(now);
         let secs = (end - s.start_time).num_seconds().abs();
         let running = s.end_time.is_none();
@@ -158,7 +183,13 @@ fn render(f: &mut ratatui::Frame, app: &App) {
     // Scroll so the last line sits at the bottom of the inner area (height - 2 for borders)
     let inner_height = chunks[0].height.saturating_sub(2) as usize;
     let total_lines = all_lines.len();
-    let scroll = total_lines.saturating_sub(inner_height) as u16;
+    let auto_scroll = total_lines.saturating_sub(inner_height) as u16;
+    let scroll = if app.user_scrolled {
+        // user_scrolled offset is "lines from bottom"; convert to top-based
+        auto_scroll.saturating_sub(app.scroll_offset)
+    } else {
+        auto_scroll
+    };
 
     let para = Paragraph::new(all_lines)
         .block(Block::default().borders(Borders::ALL).title(" Sessions "))
@@ -169,7 +200,7 @@ fn render(f: &mut ratatui::Frame, app: &App) {
     let (title, content) = match &app.mode {
         Mode::Input(InputAction::Start) => (" Start timer — title ", app.input.as_str()),
         Mode::Input(InputAction::Note) => (" Add note ", app.input.as_str()),
-        Mode::Normal => (" Keys ", "s=start  x=stop  n=note  q=quit"),
+        Mode::Normal => (" Keys ", "s=start  x=stop  n=note  ↑/k=scroll up  ↓/j=scroll down  q=quit"),
     };
     let para = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(para, chunks[1]);
@@ -206,6 +237,18 @@ fn main() -> io::Result<()> {
                                 app.status = "No active timer".to_string();
                             }
                         }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.scroll_offset += 1;
+                            app.user_scrolled = true;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if app.scroll_offset > 0 {
+                                app.scroll_offset -= 1;
+                            }
+                            if app.scroll_offset == 0 {
+                                app.user_scrolled = false;
+                            }
+                        }
                         _ => {}
                     },
                     Mode::Input(_) => match key.code {
@@ -218,12 +261,10 @@ fn main() -> io::Result<()> {
                                     _ => {}
                                 }
                             }
-                            app.input.clear();
-                            app.mode = Mode::Normal;
+                            app.cancel_input();
                         }
                         KeyCode::Esc => {
-                            app.input.clear();
-                            app.mode = Mode::Normal;
+                            app.cancel_input();
                         }
                         KeyCode::Backspace => {
                             app.input.pop();

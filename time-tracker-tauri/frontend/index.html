@@ -41,6 +41,7 @@
     .note .time-range { color: #555; }
     .note .time-range .duration { color: #f1c40f; }
     .note-text { color: #f1c40f; }
+    .date-header { color: #555; font-size: 0.8rem; margin: 10px 0 4px; }
   </style>
 </head>
 <body>
@@ -131,7 +132,19 @@
       sessions.reverse(); // oldest first, newest at bottom
       const now = Date.now();
       const term = document.getElementById('filterTitle').value.trim();
-      container.innerHTML = sessions.map(s => {
+
+      function fmtDate(ms) {
+        return new Date(ms).toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' });
+      }
+
+      let lastDate = null;
+      const parts = [];
+      for (const s of sessions) {
+        const dateStr = fmtDate(s.start_time_ms);
+        if (dateStr !== lastDate) {
+          parts.push(`<div class="date-header">── ${dateStr} ──</div>`);
+          lastDate = dateStr;
+        }
         const end = s.end_time_ms ?? now;
         const dur = fmtDuration(end - s.start_time_ms);
         const startStr = fmtTime(s.start_time_ms);
@@ -140,7 +153,7 @@
             <span class="time-range">[${startStr} | <span class="duration">${fmtDuration(n.offset_ms)}</span>]</span>
             <span class="note-text">${highlight(n.text, term)}</span>
           </div>`).join('');
-        return `
+        parts.push(`
           <div class="session ${s.running ? 'running' : ''}">
             <div class="session-header">
               <span class="time-range">[${startStr} | <span class="duration">${dur}</span>]</span>
@@ -148,8 +161,9 @@
               ${s.running ? '<span class="running-badge">[running]</span>' : ''}
             </div>
             ${notes}
-          </div>`;
-      }).join('');
+          </div>`);
+      }
+      container.innerHTML = parts.join('');
       if (forceScroll || !userScrolled) {
         container.scrollTop = container.scrollHeight;
       }
