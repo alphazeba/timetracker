@@ -21,6 +21,25 @@ fn db_path() -> PathBuf {
     PathBuf::from(home).join(".time-tracker").join("db.sqlite")
 }
 
+// ── filter state ──────────────────────────────────────────────────────────────
+
+#[derive(Clone, PartialEq)]
+enum TimeFilter {
+    Days(u32),
+    All,
+}
+
+impl TimeFilter {
+    fn label(&self) -> String {
+        match self {
+            TimeFilter::Days(n) => format!("last {}d", n),
+            TimeFilter::All => "last ∞".to_string(),
+        }
+    }
+}
+
+// ── mode ──────────────────────────────────────────────────────────────────────
+
 enum Mode {
     Normal,
     Input(InputAction),
@@ -29,7 +48,10 @@ enum Mode {
 enum InputAction {
     Start,
     Note,
+    TextFilter,
 }
+
+// ── app ───────────────────────────────────────────────────────────────────────
 
 struct App {
     db: Database,
@@ -39,6 +61,8 @@ struct App {
     status: String,
     scroll_offset: u16,
     user_scrolled: bool,
+    text_filter: String,
+    time_filter: TimeFilter,
 }
 
 impl App {
@@ -51,13 +75,33 @@ impl App {
             status: String::new(),
             scroll_offset: 0,
             user_scrolled: false,
+            text_filter: String::new(),
+            time_filter: TimeFilter::Days(1),
         };
         app.refresh();
         app
     }
 
+    fn build_list_opts(&self) -> ListOptions {
+        let now = Utc::now();
+        let text_filter = if self.text_filter.is_empty() {
+            None
+        } else {
+            Some(self.text_filter.clone())
+        };
+        let (since, latest) = match &self.time_filter {
+            TimeFilter::Days(n) => (
+                Some(now - chrono::Duration::hours(*n as i64 * 24)),
+                None,
+            ),
+            TimeFilter::All => (None, None),
+        };
+        ListOptions { text_filter, since, latest }
+    }
+
     fn refresh(&mut self) {
-        self.sessions = list_sessions(&self.db, ListOptions::default()).unwrap_or_default();
+        let opts = self.build_list_opts();
+        self.sessions = list_sessions(&self.db, opts).unwrap_or_default();
         if !self.user_scrolled {
             self.scroll_offset = 0;
         }
@@ -72,7 +116,6 @@ impl App {
         self.sessions.iter().find(|s| s.end_time.is_none())
     }
 
-    /// Run a DB result: on success set status and jump to bottom; on error set status.
     fn exec<T, E: std::fmt::Display>(&mut self, result: Result<T, E>, ok_msg: impl Into<String>) {
         match result {
             Ok(_) => {
@@ -107,6 +150,8 @@ impl App {
     }
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
 fn fmt_duration(secs: i64) -> String {
     format!(
         "{:02}:{:02}:{:02}",
@@ -116,18 +161,53 @@ fn fmt_duration(secs: i64) -> String {
     )
 }
 
+// ── highlight ─────────────────────────────────────────────────────────────────
+
+/// Split `text` into spans, highlighting every case-insensitive match of `term`.
+/// Non-matching segments get `base_style`; matches get `base_style` + black-on-yellow.
+fn highlight_spans<'a>(text: &'a str, term: &str, base_style: Style) -> Vec<Span<'a>> {
+    if term.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+    let lower_text = text.to_lowercase();
+    let lower_term = term.to_lowercase();
+    let match_style = base_style
+        .fg(Color::Black)
+        .bg(Color::Rgb(255, 182, 193))
+        .add_modifier(Modifier::BOLD);
+
+    let mut spans = Vec::new();
+    let mut pos = 0;
+    while let Some(idx) = lower_text[pos..].find(&lower_term) {
+        let abs = pos + idx;
+        if abs > pos {
+            spans.push(Span::styled(text[pos..abs].to_string(), base_style));
+        }
+        let end = abs + term.len();
+        spans.push(Span::styled(text[abs..end].to_string(), match_style));
+        pos = end;
+    }
+    if pos < text.len() {
+        spans.push(Span::styled(text[pos..].to_string(), base_style));
+    }
+    spans
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+
 fn render(f: &mut ratatui::Frame, app: &App) {
     let now = Utc::now();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0),
-            Constraint::Length(3),
-            Constraint::Length(1),
+            Constraint::Min(0),    // sessions
+            Constraint::Length(1), // filter bar
+            Constraint::Length(3), // input / help
+            Constraint::Length(1), // status
         ])
         .split(f.area());
 
-    // ── session list — oldest first so newest is at the bottom ────────────────
+    // ── session list ──────────────────────────────────────────────────────────
     let mut all_lines: Vec<Line> = Vec::new();
     let mut last_date: Option<chrono::NaiveDate> = None;
     for s in app.sessions.iter().rev() {
@@ -136,56 +216,46 @@ fn render(f: &mut ratatui::Frame, app: &App) {
             let label = format!("── {} ──", date.format("%Y-%m-%d"));
             all_lines.push(Line::from(Span::styled(
                 label,
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                Style::default().fg(Color::DarkGray),
             )));
             last_date = Some(date);
         }
         let end = s.end_time.unwrap_or(now);
         let secs = (end - s.start_time).num_seconds().abs();
         let running = s.end_time.is_none();
-        let start_str = s
-            .start_time
-            .with_timezone(&Local)
-            .format("%H:%M:%S")
-            .to_string();
-        all_lines.push(Line::from(vec![
-            Span::styled(
-                format!("[{} | {}] ", start_str, fmt_duration(secs)),
-                Style::default().fg(Color::White),
-            ),
-            Span::styled(
-                s.title.clone(),
-                Style::default().fg(Color::Cyan).add_modifier(if running {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                }),
-            ),
-            if running {
-                Span::styled(" [running]", Style::default().fg(Color::Green))
-            } else {
-                Span::raw("")
-            },
-        ]));
+        let start_str = s.start_time.with_timezone(&Local).format("%H:%M:%S").to_string();
+        let title_style = Style::default().fg(Color::Cyan).add_modifier(if running {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        });
+        let mut session_spans = vec![Span::styled(
+            format!("[{} | {}] ", start_str, fmt_duration(secs)),
+            Style::default().fg(Color::White),
+        )];
+        session_spans.extend(highlight_spans(&s.title, &app.text_filter, title_style));
+        if running {
+            session_spans.push(Span::styled(" [running]", Style::default().fg(Color::Green)));
+        }
+        all_lines.push(Line::from(session_spans));
         for note in &s.notes {
             let offset = (note.created_at - s.start_time).num_seconds().abs();
-            all_lines.push(Line::from(vec![
+            let mut note_spans = vec![
                 Span::raw("  "),
                 Span::styled(
                     format!("[{} | {}] ", start_str, fmt_duration(offset)),
                     Style::default().fg(Color::DarkGray),
                 ),
-                Span::styled(note.text.clone(), Style::default().fg(Color::Yellow)),
-            ]));
+            ];
+            note_spans.extend(highlight_spans(&note.text, &app.text_filter, Style::default().fg(Color::Yellow)));
+            all_lines.push(Line::from(note_spans));
         }
     }
 
-    // Scroll so the last line sits at the bottom of the inner area (height - 2 for borders)
     let inner_height = chunks[0].height.saturating_sub(2) as usize;
     let total_lines = all_lines.len();
     let auto_scroll = total_lines.saturating_sub(inner_height) as u16;
     let scroll = if app.user_scrolled {
-        // user_scrolled offset is "lines from bottom"; convert to top-based
         auto_scroll.saturating_sub(app.scroll_offset)
     } else {
         auto_scroll
@@ -196,19 +266,44 @@ fn render(f: &mut ratatui::Frame, app: &App) {
         .scroll((scroll, 0));
     f.render_widget(para, chunks[0]);
 
+    // ── filter bar ────────────────────────────────────────────────────────────
+    let text_label = if app.text_filter.is_empty() {
+        Span::styled("filter: —", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled(
+            format!("filter: \"{}\"", app.text_filter),
+            Style::default().fg(Color::Yellow),
+        )
+    };
+    let time_label = Span::styled(
+        format!("  time: [{}]", app.time_filter.label()),
+        Style::default().fg(Color::Cyan),
+    );
+    let hint = if matches!(app.time_filter, TimeFilter::Days(_)) {
+        Span::styled("  f=text  -/+=days  q=quit", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled("  f=text  +=days  q=quit", Style::default().fg(Color::DarkGray))
+    };
+    let filter_line = Line::from(vec![text_label, time_label, hint]);
+    f.render_widget(Paragraph::new(filter_line), chunks[1]);
+
     // ── input / help bar ──────────────────────────────────────────────────────
-    let (title, content) = match &app.mode {
+    let (bar_title, content) = match &app.mode {
         Mode::Input(InputAction::Start) => (" Start timer — title ", app.input.as_str()),
         Mode::Input(InputAction::Note) => (" Add note ", app.input.as_str()),
-        Mode::Normal => (" Keys ", "s=start  x=stop  n=note  ↑/k=scroll up  ↓/j=scroll down  q=quit"),
+        Mode::Input(InputAction::TextFilter) => (" Text filter ", app.input.as_str()),
+        Mode::Normal => (" Keys ", "s=start  x=stop  n=note  ↑/k=up  ↓/j=down"),
     };
-    let para = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(title));
-    f.render_widget(para, chunks[1]);
+    let para = Paragraph::new(content)
+        .block(Block::default().borders(Borders::ALL).title(bar_title));
+    f.render_widget(para, chunks[2]);
 
     // ── status bar ────────────────────────────────────────────────────────────
     let status = Paragraph::new(app.status.as_str()).style(Style::default().fg(Color::DarkGray));
-    f.render_widget(status, chunks[2]);
+    f.render_widget(status, chunks[3]);
 }
+
+// ── main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> io::Result<()> {
     let db = Database::open(&db_path()).expect("failed to open database");
@@ -237,6 +332,26 @@ fn main() -> io::Result<()> {
                                 app.status = "No active timer".to_string();
                             }
                         }
+                        KeyCode::Char('f') => {
+                            // Pre-fill input with current filter so user can edit it
+                            app.input = String::new();
+                            app.mode = Mode::Input(InputAction::TextFilter);
+                        }
+                        KeyCode::Char('-') => {
+                            app.time_filter = match app.time_filter {
+                                TimeFilter::Days(1) => TimeFilter::All,
+                                TimeFilter::Days(n) => TimeFilter::Days(n - 1),
+                                TimeFilter::All => TimeFilter::All,
+                            };
+                            app.refresh();
+                        }
+                        KeyCode::Char('=') | KeyCode::Char('+') => {
+                            app.time_filter = match app.time_filter {
+                                TimeFilter::All => TimeFilter::Days(1),
+                                TimeFilter::Days(n) => TimeFilter::Days(n + 1),
+                            };
+                            app.refresh();
+                        }
                         KeyCode::Up | KeyCode::Char('k') => {
                             app.scroll_offset += 1;
                             app.user_scrolled = true;
@@ -254,12 +369,18 @@ fn main() -> io::Result<()> {
                     Mode::Input(_) => match key.code {
                         KeyCode::Enter => {
                             let text = app.input.trim().to_string();
-                            if !text.is_empty() {
-                                match &app.mode {
-                                    Mode::Input(InputAction::Start) => app.handle_start(&text),
-                                    Mode::Input(InputAction::Note) => app.handle_note(&text),
-                                    _ => {}
+                            match &app.mode {
+                                Mode::Input(InputAction::Start) if !text.is_empty() => {
+                                    app.handle_start(&text);
                                 }
+                                Mode::Input(InputAction::Note) if !text.is_empty() => {
+                                    app.handle_note(&text);
+                                }
+                                Mode::Input(InputAction::TextFilter) => {
+                                    app.text_filter = text;
+                                    app.refresh();
+                                }
+                                _ => {}
                             }
                             app.cancel_input();
                         }
