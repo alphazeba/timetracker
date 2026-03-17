@@ -44,7 +44,10 @@
   <div id="sessions"></div>
 
   <script>
-    const { invoke } = window.__TAURI__.core;
+    // Tauri 2: invoke is available via window.__TAURI__.core after the bridge initialises
+    async function invoke(cmd, args) {
+      return window.__TAURI__.core.invoke(cmd, args);
+    }
 
     function fmtDuration(ms) {
       const s = Math.floor(Math.abs(ms) / 1000);
@@ -112,6 +115,10 @@
         refresh();
       } catch (e) { setStatus('Error: ' + e); }
     }
+
+    // Enter key submits from each input
+    document.getElementById('titleInput').addEventListener('keydown', e => { if (e.key === 'Enter') cmdStart(); });
+    document.getElementById('noteInput').addEventListener('keydown', e => { if (e.key === 'Enter') cmdNote(); });
 
     // Initial load + tick every second for running timers
     refresh();
