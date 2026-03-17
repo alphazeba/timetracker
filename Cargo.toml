@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "time-tracker-lib",
+    "time-tracker-cli",
+]
+resolver = "2"
