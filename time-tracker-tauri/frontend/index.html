@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Time Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; }
+    h1 { color: #00c8dc; margin-bottom: 12px; font-size: 1.2rem; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    input { background: #16213e; border: 1px solid #444; color: #e0e0e0; padding: 6px 10px;
+            border-radius: 4px; font-family: monospace; flex: 1; min-width: 160px; }
+    button { background: #0f3460; border: none; color: #e0e0e0; padding: 6px 14px;
+             border-radius: 4px; cursor: pointer; font-family: monospace; }
+    button:hover { background: #1a5276; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    #status { color: #888; font-size: 0.85rem; margin-bottom: 12px; min-height: 1.2em; }
+    .session { border-left: 3px solid #444; padding: 6px 10px; margin-bottom: 8px; }
+    .session.running { border-left-color: #2ecc71; }
+    .session-header { display: flex; gap: 8px; align-items: baseline; }
+    .time-range { color: #aaa; }
+    .time-range .duration { color: #e040fb; }
+    .session.running .time-range .duration { color: #2ecc71; }
+    .title { color: #00c8dc; font-weight: bold; }
+    .running-badge { color: #2ecc71; font-size: 0.8rem; }
+    .note { display: flex; gap: 8px; padding: 2px 0 2px 16px; font-size: 0.9rem; }
+    .note .time-range { color: #555; }
+    .note .time-range .duration { color: #f1c40f; }
+    .note-text { color: #f1c40f; }
+  </style>
+</head>
+<body>
+  <h1>⏱ Time Tracker</h1>
+  <div class="toolbar">
+    <input id="titleInput" placeholder="Timer title…" />
+    <button onclick="cmdStart()">▶ Start</button>
+    <button onclick="cmdStop()">■ Stop</button>
+  </div>
+  <div class="toolbar">
+    <input id="noteInput" placeholder="Note text…" />
+    <button onclick="cmdNote()">+ Note</button>
+  </div>
+  <div id="status"></div>
+  <div id="sessions"></div>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+
+    function fmtDuration(ms) {
+      const s = Math.floor(Math.abs(ms) / 1000);
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+
+    function fmtTime(ms) {
+      return new Date(ms).toLocaleTimeString([], { hour12: false });
+    }
+
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+    async function refresh() {
+      const sessions = await invoke('cmd_list');
+      const now = Date.now();
+      const container = document.getElementById('sessions');
+      container.innerHTML = sessions.map(s => {
+        const end = s.end_time_ms ?? now;
+        const dur = fmtDuration(end - s.start_time_ms);
+        const startStr = fmtTime(s.start_time_ms);
+        const notes = s.notes.map(n => `
+          <div class="note">
+            <span class="time-range">[${startStr} | <span class="duration">${fmtDuration(n.offset_ms)}</span>]</span>
+            <span class="note-text">${n.text}</span>
+          </div>`).join('');
+        return `
+          <div class="session ${s.running ? 'running' : ''}">
+            <div class="session-header">
+              <span class="time-range">[${startStr} | <span class="duration">${dur}</span>]</span>
+              <span class="title">${s.title}</span>
+              ${s.running ? '<span class="running-badge">[running]</span>' : ''}
+            </div>
+            ${notes}
+          </div>`;
+      }).join('');
+    }
+
+    async function cmdStart() {
+      const title = document.getElementById('titleInput').value.trim();
+      if (!title) return;
+      try {
+        const msg = await invoke('cmd_start', { title });
+        setStatus(msg);
+        document.getElementById('titleInput').value = '';
+        refresh();
+      } catch (e) { setStatus('Error: ' + e); }
+    }
+
+    async function cmdStop() {
+      try {
+        const msg = await invoke('cmd_stop');
+        setStatus(msg);
+        refresh();
+      } catch (e) { setStatus('Error: ' + e); }
+    }
+
+    async function cmdNote() {
+      const text = document.getElementById('noteInput').value.trim();
+      if (!text) return;
+      try {
+        const msg = await invoke('cmd_note', { text });
+        setStatus(msg);
+        document.getElementById('noteInput').value = '';
+        refresh();
+      } catch (e) { setStatus('Error: ' + e); }
+    }
+
+    // Initial load + tick every second for running timers
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "productName": "Time Tracker",
+  "version": "0.1.0",
+  "identifier": "com.timetracker.app",
+  "build": {
+    "frontendDist": "../time-tracker-tauri/frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Time Tracker",
+        "width": 700,
+        "height": 550,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}
