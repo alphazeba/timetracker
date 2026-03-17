@@ -101,8 +101,10 @@ impl eframe::App for App {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for session in &self.sessions {
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                for session in self.sessions.iter().rev() {
                     let end = session.end_time.unwrap_or(now);
                     let secs = (end - session.start_time).num_seconds().abs();
                     let start_str = session.start_time.with_timezone(&Local).format("%H:%M:%S").to_string();

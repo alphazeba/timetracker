@@ -3,24 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <title>Time Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="../icons/app-icon.svg" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; }
-    h1 { color: #00c8dc; margin-bottom: 12px; font-size: 1.2rem; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; display: flex; flex-direction: column; height: 100vh; }
+    h1 { color: #00c8dc; margin-bottom: 12px; font-size: 1.2rem; flex-shrink: 0; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; flex-shrink: 0; }
     input { background: #16213e; border: 1px solid #444; color: #e0e0e0; padding: 6px 10px;
             border-radius: 4px; font-family: monospace; flex: 1; min-width: 160px; }
     button { background: #0f3460; border: none; color: #e0e0e0; padding: 6px 14px;
              border-radius: 4px; cursor: pointer; font-family: monospace; }
     button:hover { background: #1a5276; }
     button:disabled { opacity: 0.4; cursor: default; }
-    #status { color: #888; font-size: 0.85rem; margin-bottom: 12px; min-height: 1.2em; }
+    #status { color: #888; font-size: 0.85rem; margin-bottom: 12px; min-height: 1.2em; flex-shrink: 0; }
+    #sessions { overflow-y: auto; flex: 1; }
     .session { border-left: 3px solid #444; padding: 6px 10px; margin-bottom: 8px; }
     .session.running { border-left-color: #2ecc71; }
     .session-header { display: flex; gap: 8px; align-items: baseline; }
     .time-range { color: #aaa; }
     .time-range .duration { color: #e040fb; }
-    .session.running .time-range .duration { color: #2ecc71; }
+    .session.running .session-header .time-range .duration { color: #2ecc71; }
     .title { color: #00c8dc; font-weight: bold; }
     .running-badge { color: #2ecc71; font-size: 0.8rem; }
     .note { display: flex; gap: 8px; padding: 2px 0 2px 16px; font-size: 0.9rem; }
@@ -63,6 +65,7 @@
 
     async function refresh() {
       const sessions = await invoke('cmd_list');
+      sessions.reverse(); // oldest first, newest at bottom
       const now = Date.now();
       const container = document.getElementById('sessions');
       container.innerHTML = sessions.map(s => {
@@ -84,6 +87,7 @@
             ${notes}
           </div>`;
       }).join('');
+      container.scrollTop = container.scrollHeight;
     }
 
     async function cmdStart() {

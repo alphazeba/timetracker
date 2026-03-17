@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Background -->
+  <rect width="128" height="128" rx="20" fill="#1a1a2e"/>
+
+  <!-- Paper (slightly rotated, behind stopwatch) -->
+  <g transform="translate(62, 72) rotate(-12)">
+    <rect x="-22" y="-28" width="44" height="54" rx="4" fill="#e8e0d0" stroke="#c8b89a" stroke-width="2"/>
+    <!-- Lines on paper -->
+    <line x1="-14" y1="-14" x2="14" y2="-14" stroke="#b0a090" stroke-width="2" stroke-linecap="round"/>
+    <line x1="-14" y1="-6"  x2="14" y2="-6"  stroke="#b0a090" stroke-width="2" stroke-linecap="round"/>
+    <line x1="-14" y1="2"   x2="10" y2="2"   stroke="#b0a090" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Stopwatch body -->
+  <circle cx="52" cy="62" r="30" fill="#2a2a4a" stroke="#00c8dc" stroke-width="3"/>
+  <circle cx="52" cy="62" r="24" fill="#1e1e38" stroke="#00c8dc" stroke-width="1.5"/>
+
+  <!-- Stopwatch crown / button -->
+  <rect x="48" y="28" width="8" height="7" rx="2" fill="#00c8dc"/>
+  <!-- Side button -->
+  <rect x="62" y="32" width="7" height="5" rx="2" fill="#00c8dc" transform="rotate(30 65 34)"/>
+
+  <!-- Clock face ticks -->
+  <g stroke="#00c8dc" stroke-width="1.5" stroke-linecap="round">
+    <line x1="52" y1="40" x2="52" y2="44"/>
+    <line x1="52" y1="80" x2="52" y2="84"/>
+    <line x1="30" y1="62" x2="34" y2="62"/>
+    <line x1="70" y1="62" x2="74" y2="62"/>
+  </g>
+
+  <!-- Clock hands -->
+  <line x1="52" y1="62" x2="52" y2="46" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="52" y1="62" x2="63" y2="68" stroke="#00c8dc" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="52" cy="62" r="2.5" fill="#00c8dc"/>
+
+  <!-- Dip pen running diagonally through the middle -->
+  <!-- Pen shaft -->
+  <g transform="translate(64, 64) rotate(-45)">
+    <!-- Barrel -->
+    <rect x="-4" y="-38" width="8" height="52" rx="3" fill="#8b6914"/>
+    <!-- Metal ferrule -->
+    <rect x="-4" y="12" width="8" height="6" rx="1" fill="#c0a030"/>
+    <!-- Nib holder -->
+    <polygon points="0,34 -3,18 3,18" fill="#c0a030"/>
+    <!-- Nib (split) -->
+    <polygon points="0,46 -2.5,34 2.5,34" fill="#e8e0d0"/>
+    <line x1="0" y1="34" x2="0" y2="46" stroke="#888" stroke-width="0.8"/>
+    <!-- Ink drop at tip -->
+    <ellipse cx="0" cy="47" rx="1.5" ry="2" fill="#00c8dc" opacity="0.9"/>
+    <!-- Pen top cap decoration -->
+    <rect x="-4" y="-42" width="8" height="6" rx="3" fill="#6b4f10"/>
+  </g>
+</svg>
