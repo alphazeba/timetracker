@@ -158,33 +158,32 @@ pub fn add_note(db: &Database, text: &str, now: DateTime<Utc>) -> Result<Note> {
 
 /// List sessions with optional filters.
 pub fn list_sessions(db: &Database, opts: ListOptions) -> Result<Vec<Session>> {
-    // Build the WHERE clause dynamically.
-    // Active session (end_time IS NULL) is always included when since is set.
     let mut conditions: Vec<String> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-    if let Some(ref filter) = opts.title_filter {
-        conditions.push("title LIKE ?".to_string());
-        params.push(Box::new(format!("%{}%", filter)));
+    // Text filter: match session title OR any associated note text
+    if let Some(ref filter) = opts.text_filter {
+        let pattern = format!("%{}%", filter);
+        conditions.push(
+            "(title LIKE ? OR start_time IN (SELECT session_start FROM notes WHERE text LIKE ?))"
+                .to_string(),
+        );
+        params.push(Box::new(pattern.clone()));
+        params.push(Box::new(pattern));
     }
 
-    // For time bounds: active session is always included regardless of since/latest.
-    // We model this as: (end_time IS NULL) OR (time_conditions)
+    // Time bounds: active session always included regardless of since/latest
     let mut time_conditions: Vec<String> = Vec::new();
-
     if let Some(since) = opts.since {
         time_conditions.push("start_time >= ?".to_string());
         params.push(Box::new(since.timestamp_millis()));
     }
-
     if let Some(latest) = opts.latest {
         time_conditions.push("start_time <= ?".to_string());
         params.push(Box::new(latest.timestamp_millis()));
     }
-
     if !time_conditions.is_empty() {
-        let time_clause = time_conditions.join(" AND ");
-        conditions.push(format!("(end_time IS NULL OR ({}))", time_clause));
+        conditions.push(format!("(end_time IS NULL OR ({}))", time_conditions.join(" AND ")));
     }
 
     let where_clause = if conditions.is_empty() {
@@ -199,12 +198,9 @@ pub fn list_sessions(db: &Database, opts: ListOptions) -> Result<Vec<Session>> {
     );
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
     let mut stmt = db.conn.prepare(&sql)?;
     let rows: Vec<(i64, String, Option<i64>)> = stmt
-        .query_map(param_refs.as_slice(), |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?
+        .query_map(param_refs.as_slice(), |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<std::result::Result<_, _>>()?;
 
     rows.into_iter()
@@ -256,7 +252,7 @@ mod tests {
         let sessions = list_sessions(
             &db,
             ListOptions {
-                title_filter: None,
+                text_filter: None,
                 since: None,
                 latest: None,
             },
@@ -311,7 +307,7 @@ mod tests {
         let sessions = list_sessions(
             &db,
             ListOptions {
-                title_filter: Some("alpha".to_string()),
+                text_filter: Some("alpha".to_string()),
                 since: None,
                 latest: None,
             },
@@ -319,6 +315,29 @@ mod tests {
         .unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].title, "alpha task");
+    }
+
+    #[test]
+    fn test_list_note_text_filter() {
+        let db = Database::open_in_memory().unwrap();
+        start_timer(&db, "task one", ts(1_000_000)).unwrap();
+        add_note(&db, "important note here", ts(1_000_050)).unwrap();
+        stop_timer(&db, ts(1_000_100)).unwrap();
+        start_timer(&db, "task two", ts(1_000_200)).unwrap();
+        stop_timer(&db, ts(1_000_300)).unwrap();
+
+        // Filter by note text — should return "task one" even though title doesn't match
+        let sessions = list_sessions(
+            &db,
+            ListOptions {
+                text_filter: Some("important".to_string()),
+                since: None,
+                latest: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].title, "task one");
     }
 
     #[test]
@@ -334,7 +353,7 @@ mod tests {
         let sessions = list_sessions(
             &db,
             ListOptions {
-                title_filter: None,
+                text_filter: None,
                 since: Some(since),
                 latest: None,
             },
@@ -358,7 +377,7 @@ mod tests {
         let sessions = list_sessions(
             &db,
             ListOptions {
-                title_filter: None,
+                text_filter: None,
                 since: None,
                 latest: None,
             },

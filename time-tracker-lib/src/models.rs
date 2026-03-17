@@ -34,8 +34,8 @@ pub struct StartResult {
 /// Filters for `list_sessions`.
 #[derive(Default)]
 pub struct ListOptions {
-    /// If set, only sessions whose title contains this string are returned.
-    pub title_filter: Option<String>,
+    /// If set, only sessions whose title or any note text contains this string are returned.
+    pub text_filter: Option<String>,
     /// Lower bound on `start_time` (inclusive). `None` means no lower bound.
     pub since: Option<DateTime<Utc>>,
     /// Upper bound on `start_time` (inclusive). `None` means no upper bound.

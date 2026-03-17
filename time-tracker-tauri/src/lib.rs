@@ -80,7 +80,7 @@ pub fn do_list(db: &Database, filter: FilterOptions) -> Result<Vec<SessionDto>, 
     list_sessions(
         db,
         ListOptions {
-            title_filter: filter.title,
+            text_filter: filter.title,
             since,
             latest,
         },

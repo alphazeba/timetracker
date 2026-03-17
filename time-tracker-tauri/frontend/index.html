@@ -37,13 +37,13 @@
     .note .time-range { color: #555; }
     .note .time-range .duration { color: #f1c40f; }
     .note-text { color: #f1c40f; }
+    mark { background: #f1c40f; color: #1a1a2e; border-radius: 2px; padding: 0 2px; }
   </style>
 </head>
 <body>
   <h1>⏱ Time Tracker</h1>
   <div class="filter-bar">
-    <label>Title:</label>
-    <input type="text" id="filterTitle" placeholder="filter…" oninput="refresh(false)" />
+    <input type="text" id="filterTitle" placeholder="Text filter…" oninput="refresh(false)" />
     <label>Time:</label>
     <select id="timeFilterType" onchange="onTimeFilterTypeChange()">
       <option value="days">Days</option>
@@ -114,12 +114,20 @@
       return new Date(ms).toLocaleTimeString([], { hour12: false });
     }
 
+    // Wrap all case-insensitive occurrences of `term` in <mark> tags
+    function highlight(text, term) {
+      if (!term) return text;
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return text.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`);
+    }
+
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
     async function refresh(forceScroll = false) {
       const sessions = await invoke('cmd_list', { filter: getFilter() });
       sessions.reverse(); // oldest first, newest at bottom
       const now = Date.now();
+      const term = document.getElementById('filterTitle').value.trim();
       container.innerHTML = sessions.map(s => {
         const end = s.end_time_ms ?? now;
         const dur = fmtDuration(end - s.start_time_ms);
@@ -127,13 +135,13 @@
         const notes = s.notes.map(n => `
           <div class="note">
             <span class="time-range">[${startStr} | <span class="duration">${fmtDuration(n.offset_ms)}</span>]</span>
-            <span class="note-text">${n.text}</span>
+            <span class="note-text">${highlight(n.text, term)}</span>
           </div>`).join('');
         return `
           <div class="session ${s.running ? 'running' : ''}">
             <div class="session-header">
               <span class="time-range">[${startStr} | <span class="duration">${dur}</span>]</span>
-              <span class="title">${s.title}</span>
+              <span class="title">${highlight(s.title, term)}</span>
               ${s.running ? '<span class="running-badge">[running]</span>' : ''}
             </div>
             ${notes}
@@ -177,6 +185,15 @@
     // Enter key submits from each input
     document.getElementById('titleInput').addEventListener('keydown', e => { if (e.key === 'Enter') cmdStart(); });
     document.getElementById('noteInput').addEventListener('keydown', e => { if (e.key === 'Enter') cmdNote(); });
+
+    // Global hotkeys: Cmd+S (Mac) / Ctrl+S (Win/Linux) = focus title, Cmd+N / Ctrl+N = focus note
+    document.addEventListener('keydown', e => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === 's') { e.preventDefault(); document.getElementById('titleInput').focus(); }
+      if (e.key === 'n') { e.preventDefault(); document.getElementById('noteInput').focus(); }
+      if (e.key === 'f') { e.preventDefault(); document.getElementById('filterTitle').focus(); }
+    });
 
     // Initial load + tick every second for running timers (no force scroll)
     refresh(true);

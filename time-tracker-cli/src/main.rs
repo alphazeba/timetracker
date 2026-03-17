@@ -232,7 +232,7 @@ fn main() {
             match list_sessions(
                 &db,
                 ListOptions {
-                    title_filter: title,
+                    text_filter: title,
                     since,
                     latest,
                 },
