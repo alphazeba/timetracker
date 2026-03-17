@@ -15,10 +15,14 @@
     .filter-bar input[type="text"], .filter-bar input[type="number"], .filter-bar input[type="date"] {
       flex: 1; min-width: 80px; max-width: 140px;
     }
+    #filterTitle { flex: 2; max-width: none; min-width: 0; }
     .filter-bar button { padding: 4px 10px; font-size: 0.8rem; }
     .filter-bar button.active { background: #1a5276; border: 1px solid #00c8dc; }
     .filter-bar select { background: #16213e; border: 1px solid #444; color: #e0e0e0;
-      padding: 6px 8px; border-radius: 4px; font-family: monospace; }    input { background: #16213e; border: 1px solid #444; color: #e0e0e0; padding: 6px 10px;
+      padding: 6px 28px 6px 8px; border-radius: 4px; font-family: monospace;
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; }    input { background: #16213e; border: 1px solid #444; color: #e0e0e0; padding: 6px 10px;
             border-radius: 4px; font-family: monospace; flex: 1; min-width: 160px; }
     button { background: #0f3460; border: none; color: #e0e0e0; padding: 6px 14px;
              border-radius: 4px; cursor: pointer; font-family: monospace; }
@@ -37,7 +41,6 @@
     .note .time-range { color: #555; }
     .note .time-range .duration { color: #f1c40f; }
     .note-text { color: #f1c40f; }
-    mark { background: #f1c40f; color: #1a1a2e; border-radius: 2px; padding: 0 2px; }
   </style>
 </head>
 <body>
