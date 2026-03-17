@@ -3,7 +3,6 @@ members = [
     "time-tracker-lib",
     "time-tracker-cli",
     "time-tracker-tui",
-    "time-tracker-egui",
     "time-tracker-tauri",
 ]
 resolver = "2"

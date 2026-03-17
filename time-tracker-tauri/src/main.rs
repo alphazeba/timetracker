@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 use tauri::State;
 use time_tracker_lib::Database;
-use time_tracker_tauri::{do_list, do_note, do_start, do_stop, AppState, SessionDto, db_path};
+use time_tracker_tauri::{do_list, do_note, do_start, do_stop, AppState, FilterOptions, SessionDto, db_path};
 
 #[tauri::command]
 fn cmd_start(title: String, state: State<AppState>) -> Result<String, String> {
@@ -21,8 +21,8 @@ fn cmd_note(text: String, state: State<AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn cmd_list(state: State<AppState>) -> Result<Vec<SessionDto>, String> {
-    do_list(&state.0.lock().unwrap())
+fn cmd_list(filter: FilterOptions, state: State<AppState>) -> Result<Vec<SessionDto>, String> {
+    do_list(&state.0.lock().unwrap(), filter)
 }
 
 fn main() {

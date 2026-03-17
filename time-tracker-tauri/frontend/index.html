@@ -8,14 +8,22 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 16px; display: flex; flex-direction: column; height: 100vh; }
     h1 { color: #00c8dc; margin-bottom: 12px; font-size: 1.2rem; flex-shrink: 0; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; flex-shrink: 0; }
-    input { background: #16213e; border: 1px solid #444; color: #e0e0e0; padding: 6px 10px;
+    #status { color: #888; font-size: 0.85rem; margin-top: 8px; margin-bottom: 8px; min-height: 1.2em; flex-shrink: 0; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; flex-shrink: 0; }
+    .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; flex-shrink: 0; padding: 8px; background: #0d0d1f; border-radius: 6px; align-items: center; }
+    .filter-bar label { color: #888; font-size: 0.8rem; white-space: nowrap; }
+    .filter-bar input[type="text"], .filter-bar input[type="number"], .filter-bar input[type="date"] {
+      flex: 1; min-width: 80px; max-width: 140px;
+    }
+    .filter-bar button { padding: 4px 10px; font-size: 0.8rem; }
+    .filter-bar button.active { background: #1a5276; border: 1px solid #00c8dc; }
+    .filter-bar select { background: #16213e; border: 1px solid #444; color: #e0e0e0;
+      padding: 6px 8px; border-radius: 4px; font-family: monospace; }    input { background: #16213e; border: 1px solid #444; color: #e0e0e0; padding: 6px 10px;
             border-radius: 4px; font-family: monospace; flex: 1; min-width: 160px; }
     button { background: #0f3460; border: none; color: #e0e0e0; padding: 6px 14px;
              border-radius: 4px; cursor: pointer; font-family: monospace; }
     button:hover { background: #1a5276; }
     button:disabled { opacity: 0.4; cursor: default; }
-    #status { color: #888; font-size: 0.85rem; margin-bottom: 12px; min-height: 1.2em; flex-shrink: 0; }
     #sessions { overflow-y: auto; flex: 1; }
     .session { border-left: 3px solid #444; padding: 6px 10px; margin-bottom: 8px; }
     .session.running { border-left-color: #2ecc71; }
@@ -33,6 +41,20 @@
 </head>
 <body>
   <h1>⏱ Time Tracker</h1>
+  <div class="filter-bar">
+    <label>Title:</label>
+    <input type="text" id="filterTitle" placeholder="filter…" oninput="refresh(false)" />
+    <label>Time:</label>
+    <select id="timeFilterType" onchange="onTimeFilterTypeChange()">
+      <option value="days">Days</option>
+      <option value="date">Date</option>
+      <option value="all">All</option>
+    </select>
+    <input type="number" id="filterDays" value="1" min="1" max="365" style="max-width:60px" oninput="refresh(false)" />
+    <input type="date" id="filterDate" style="display:none" onchange="refresh(false)" />
+  </div>
+  <div id="sessions"></div>
+  <div id="status"></div>
   <div class="toolbar">
     <input id="titleInput" placeholder="Timer title…" />
     <button onclick="cmdStart()">▶ Start</button>
@@ -42,13 +64,44 @@
     <input id="noteInput" placeholder="Note text…" />
     <button onclick="cmdNote()">+ Note</button>
   </div>
-  <div id="status"></div>
-  <div id="sessions"></div>
 
   <script>
     // Tauri 2: invoke is available via window.__TAURI__.core after the bridge initialises
     async function invoke(cmd, args) {
       return window.__TAURI__.core.invoke(cmd, args);
+    }
+
+    let userScrolled = false;
+    const container = document.getElementById('sessions');
+
+    // ── filter helpers ────────────────────────────────────────────────────────
+    function onTimeFilterTypeChange() {
+      const type = document.getElementById('timeFilterType').value;
+      document.getElementById('filterDays').style.display = type === 'days' ? '' : 'none';
+      document.getElementById('filterDate').style.display = type === 'date' ? '' : 'none';
+      refresh(false);
+    }
+
+    function getFilter() {
+      const title = document.getElementById('filterTitle').value.trim() || null;
+      const type = document.getElementById('timeFilterType').value;
+      return {
+        title,
+        all:  type === 'all'  ? true : null,
+        date: type === 'date' ? document.getElementById('filterDate').value || null : null,
+        days: type === 'days' ? parseInt(document.getElementById('filterDays').value) || 1 : null,
+      };
+    }
+
+    // Track when user scrolls away from the bottom
+    container.addEventListener('scroll', () => {
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 8;
+      userScrolled = !atBottom;
+    });
+
+    function scrollToBottom() {
+      userScrolled = false;
+      container.scrollTop = container.scrollHeight;
     }
 
     function fmtDuration(ms) {
@@ -63,11 +116,10 @@
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
-    async function refresh() {
-      const sessions = await invoke('cmd_list');
+    async function refresh(forceScroll = false) {
+      const sessions = await invoke('cmd_list', { filter: getFilter() });
       sessions.reverse(); // oldest first, newest at bottom
       const now = Date.now();
-      const container = document.getElementById('sessions');
       container.innerHTML = sessions.map(s => {
         const end = s.end_time_ms ?? now;
         const dur = fmtDuration(end - s.start_time_ms);
@@ -87,7 +139,9 @@
             ${notes}
           </div>`;
       }).join('');
-      container.scrollTop = container.scrollHeight;
+      if (forceScroll || !userScrolled) {
+        container.scrollTop = container.scrollHeight;
+      }
     }
 
     async function cmdStart() {
@@ -97,7 +151,7 @@
         const msg = await invoke('cmd_start', { title });
         setStatus(msg);
         document.getElementById('titleInput').value = '';
-        refresh();
+        refresh(true);
       } catch (e) { setStatus('Error: ' + e); }
     }
 
@@ -105,7 +159,7 @@
       try {
         const msg = await invoke('cmd_stop');
         setStatus(msg);
-        refresh();
+        refresh(true);
       } catch (e) { setStatus('Error: ' + e); }
     }
 
@@ -116,7 +170,7 @@
         const msg = await invoke('cmd_note', { text });
         setStatus(msg);
         document.getElementById('noteInput').value = '';
-        refresh();
+        refresh(true);
       } catch (e) { setStatus('Error: ' + e); }
     }
 
@@ -124,9 +178,9 @@
     document.getElementById('titleInput').addEventListener('keydown', e => { if (e.key === 'Enter') cmdStart(); });
     document.getElementById('noteInput').addEventListener('keydown', e => { if (e.key === 'Enter') cmdNote(); });
 
-    // Initial load + tick every second for running timers
-    refresh();
-    setInterval(refresh, 1000);
+    // Initial load + tick every second for running timers (no force scroll)
+    refresh(true);
+    setInterval(() => refresh(false), 1000);
   </script>
 </body>
 </html>
