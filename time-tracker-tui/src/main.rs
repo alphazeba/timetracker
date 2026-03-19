@@ -9,6 +9,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::Terminal;
+use render::RenderOutput;
 use std::{io, path::PathBuf};
 use time_tracker_lib::Database;
 
@@ -28,9 +29,9 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     loop {
-        let mut computed_max: u16 = 0;
-        terminal.draw(|f| { computed_max = render::render(f, &app); })?;
-        app.max_scroll = computed_max;
+        let mut output = RenderOutput { max_scroll: 0 };
+        terminal.draw(|f| { output = render::render(f, &app); })?;
+        app.max_scroll = output.max_scroll;
         app.scroll_offset = app.scroll_offset.min(app.max_scroll);
 
         if event::poll(std::time::Duration::from_millis(500))? {

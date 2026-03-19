@@ -19,9 +19,12 @@ fn fmt_duration(secs: i64) -> String {
     )
 }
 
-/// Render the full UI. Returns the computed max scroll so the caller can
-/// update `app.max_scroll` without needing `&mut App` here.
-pub fn render(f: &mut ratatui::Frame, app: &App) -> u16 {
+pub struct RenderOutput {
+    pub max_scroll: u16,
+}
+
+/// Render the full UI
+pub fn render(f: &mut ratatui::Frame, app: &App) -> RenderOutput {
     let now = Utc::now();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -154,5 +157,5 @@ pub fn render(f: &mut ratatui::Frame, app: &App) -> u16 {
         chunks[3],
     );
 
-    auto_scroll
+    RenderOutput { max_scroll: auto_scroll }
 }
