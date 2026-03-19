@@ -57,14 +57,12 @@ fn main() -> io::Result<()> {
                                 TimeFilter::Days(n) => TimeFilter::Days(n - 1),
                                 TimeFilter::All => TimeFilter::All,
                             };
-                            app.refresh();
                         }
                         KeyCode::Char('=') | KeyCode::Char('+') => {
                             app.time_filter = match app.time_filter {
                                 TimeFilter::All => TimeFilter::Days(1),
                                 TimeFilter::Days(n) => TimeFilter::Days(n + 1),
                             };
-                            app.refresh();
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
                             app.scroll_offset = (app.scroll_offset + 1).min(app.max_scroll);
@@ -80,19 +78,18 @@ fn main() -> io::Result<()> {
                         }
                         _ => {}
                     },
-                    Mode::Input(_) => match key.code {
+                    Mode::Input(action) => match key.code {
                         KeyCode::Enter => {
                             let text = app.input.trim().to_string();
-                            match &app.mode {
-                                Mode::Input(InputAction::Start) if !text.is_empty() => {
+                            match action {
+                                InputAction::Start if !text.is_empty() => {
                                     app.handle_start(&text);
                                 }
-                                Mode::Input(InputAction::Note) if !text.is_empty() => {
+                                InputAction::Note if !text.is_empty() => {
                                     app.handle_note(&text);
                                 }
-                                Mode::Input(InputAction::TextFilter) => {
+                                InputAction::TextFilter => {
                                     app.text_filter = text;
-                                    app.refresh();
                                 }
                                 _ => {}
                             }
@@ -113,9 +110,8 @@ fn main() -> io::Result<()> {
             }
         }
 
-        if matches!(app.mode, Mode::Normal) {
-            app.refresh();
-        }
+        // Refresh every tick — reloads sessions and updates running durations.
+        app.refresh();
     }
 
     disable_raw_mode()?;

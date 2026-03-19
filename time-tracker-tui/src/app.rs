@@ -94,11 +94,6 @@ impl App {
         }
     }
 
-    pub fn refresh_and_jump(&mut self) {
-        self.user_scrolled = false;
-        self.refresh();
-    }
-
     pub fn active_session(&self) -> Option<&Session> {
         self.sessions.iter().find(|s| s.end_time.is_none())
     }
@@ -107,7 +102,8 @@ impl App {
         match result {
             Ok(t) => {
                 self.status = t.into();
-                self.refresh_and_jump();
+                // this will jump to newest event on next refresh
+                self.user_scrolled = false;
             }
             Err(e) => self.status = format!("Error: {e}"),
         }
