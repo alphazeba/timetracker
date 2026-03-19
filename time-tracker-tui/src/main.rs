@@ -172,31 +172,62 @@ fn fmt_duration(secs: i64) -> String {
 // ── highlight ─────────────────────────────────────────────────────────────────
 
 /// Split `text` into spans, highlighting every case-insensitive match of `term`.
-/// Non-matching segments get `base_style`; matches get `base_style` + black-on-yellow.
+/// Non-matching segments get `base_style`; matches get black-on-pink bold.
 fn highlight_spans<'a>(text: &'a str, term: &str, base_style: Style) -> Vec<Span<'a>> {
     if term.is_empty() {
         return vec![Span::styled(text.to_string(), base_style)];
     }
-    let lower_text = text.to_lowercase();
-    let lower_term = term.to_lowercase();
     let match_style = base_style
         .fg(Color::Black)
         .bg(Color::Rgb(255, 182, 193))
         .add_modifier(Modifier::BOLD);
 
-    let mut spans = Vec::new();
-    let mut pos = 0;
-    while let Some(idx) = lower_text[pos..].find(&lower_term) {
-        let abs = pos + idx;
-        if abs > pos {
-            spans.push(Span::styled(text[pos..abs].to_string(), base_style));
+    // Work in char space to avoid byte-boundary issues with multi-byte chars
+    // whose lowercase forms have different byte lengths (e.g. 'İ' → "i\u{307}").
+    let text_chars: Vec<char> = text.chars().collect();
+    let lower_text_chars: Vec<char> = text.to_lowercase().chars().collect();
+    let lower_term_chars: Vec<char> = term.to_lowercase().chars().collect();
+    let term_len = lower_term_chars.len();
+
+    // Collect match start positions (in lower_text char indices).
+    let mut matches: Vec<usize> = Vec::new();
+    let mut i = 0;
+    while i + term_len <= lower_text_chars.len() {
+        if lower_text_chars[i..i + term_len] == lower_term_chars[..] {
+            matches.push(i);
+            i += term_len;
+        } else {
+            i += 1;
         }
-        let end = abs + term.len();
-        spans.push(Span::styled(text[abs..end].to_string(), match_style));
+    }
+
+    if matches.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    // Helper: turn a char-index range back into a &str slice of `text`.
+    // We build a byte-offset map once.
+    let byte_offsets: Vec<usize> = text
+        .char_indices()
+        .map(|(b, _)| b)
+        .chain(std::iter::once(text.len()))
+        .collect();
+    let char_slice = |from: usize, to: usize| -> &str {
+        &text[byte_offsets[from]..byte_offsets[to]]
+    };
+
+    let mut spans = Vec::new();
+    let mut pos = 0; // char position in lower_text
+    for start in matches {
+        if start > pos {
+            spans.push(Span::styled(char_slice(pos, start).to_string(), base_style));
+        }
+        let end = start + term_len;
+        spans.push(Span::styled(char_slice(start, end).to_string(), match_style));
         pos = end;
     }
-    if pos < text.len() {
-        spans.push(Span::styled(text[pos..].to_string(), base_style));
+    if pos < text_chars.len() {
+        spans.push(Span::styled(char_slice(pos, text_chars.len()).to_string(), base_style));
     }
     spans
 }
@@ -327,7 +358,7 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
         Mode::Input(InputAction::Start) => (" Start timer — title ", app.input.as_str()),
         Mode::Input(InputAction::Note) => (" Add note ", app.input.as_str()),
         Mode::Input(InputAction::TextFilter) => (" Text filter ", app.input.as_str()),
-        Mode::Normal => (" Keys ", "s=start  x=stop  n=note  ↑/k=up  ↓/j=down"),
+        Mode::Normal => (" Keys ", "s=start  x=stop  n=note  ↓/j=down  ↑/k=up"),
     };
     let para = Paragraph::new(content)
         .block(Block::default().borders(Borders::ALL).title(bar_title));
@@ -368,7 +399,6 @@ fn main() -> io::Result<()> {
                             }
                         }
                         KeyCode::Char('f') => {
-                            // Pre-fill input with current filter so user can edit it
                             app.input = String::new();
                             app.mode = Mode::Input(InputAction::TextFilter);
                         }
@@ -443,4 +473,23 @@ fn main() -> io::Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for the UTF-8 slicing bug in highlight_spans.
+    ///
+    /// 'İ' (U+0130) is 2 bytes. Its lowercase form is "i\u{307}" (3 bytes),
+    /// so lower_text is longer than text. find("i") returns byte offset 0 in
+    /// lower_text, then `end = 0 + 1`. Slicing text[0..1] panics because 'İ'
+    /// occupies bytes 0..2 — byte 1 is not a char boundary.
+    #[test]
+    fn highlight_spans_multibyte_no_panic() {
+        let style = Style::default();
+        let spans = highlight_spans("İstanbul", "i", style);
+        let combined: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(combined, "İstanbul");
+    }
 }
