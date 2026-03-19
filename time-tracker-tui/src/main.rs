@@ -232,10 +232,17 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
         } else {
             Modifier::empty()
         });
-        let mut session_spans = vec![Span::styled(
-            format!("[{} | {}] ", start_str, fmt_duration(secs)),
-            Style::default().fg(Color::White),
-        )];
+        let mut session_spans = vec![
+            Span::styled(
+                format!("[{} | ", start_str),
+                Style::default().fg(Color::White),
+            ),
+            Span::styled(
+                fmt_duration(secs),
+                Style::default().fg(Color::Green),
+            ),
+            Span::styled("] ", Style::default().fg(Color::White)),
+        ];
         session_spans.extend(highlight_spans(&s.title, &app.text_filter, title_style));
         if running {
             session_spans.push(Span::styled(" [running]", Style::default().fg(Color::Green)));
@@ -244,7 +251,7 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
         for note in &s.notes {
             let offset = (note.created_at - s.start_time).num_seconds().abs();
             let mut note_spans = vec![
-                Span::raw("  "),
+                Span::raw(" "),
                 Span::styled(
                     format!("[{} | {}] ", start_str, fmt_duration(offset)),
                     Style::default().fg(Color::DarkGray),
