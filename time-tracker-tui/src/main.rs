@@ -216,16 +216,33 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
         .split(f.area());
 
     // ── session list ──────────────────────────────────────────────────────────
+    // Pre-compute total duration (secs) per local date for the date headers.
+    let mut date_totals: std::collections::HashMap<chrono::NaiveDate, i64> =
+        std::collections::HashMap::new();
+    for s in &app.sessions {
+        let date = s.start_time.with_timezone(&Local).date_naive();
+        let end = s.end_time.unwrap_or(now);
+        let secs = (end - s.start_time).num_seconds().abs();
+        *date_totals.entry(date).or_insert(0) += secs;
+    }
+
     let mut all_lines: Vec<Line> = Vec::new();
     let mut last_date: Option<chrono::NaiveDate> = None;
     for s in app.sessions.iter().rev() {
         let date = s.start_time.with_timezone(&Local).date_naive();
         if last_date != Some(date) {
-            let label = format!("── {} ──", date.format("%Y-%m-%d"));
-            all_lines.push(Line::from(Span::styled(
-                label,
-                Style::default().fg(Color::DarkGray),
-            )));
+            let total = date_totals.get(&date).copied().unwrap_or(0);
+            all_lines.push(Line::from(vec![
+                Span::styled(
+                    format!("── {} ", date.format("%Y-%m-%d")),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    fmt_duration(total),
+                    Style::default().fg(Color::Magenta),
+                ),
+                Span::styled(" ──", Style::default().fg(Color::DarkGray)),
+            ]));
             last_date = Some(date);
         }
         let end = s.end_time.unwrap_or(now);
@@ -239,7 +256,7 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
         });
         let mut session_spans = vec![
             Span::styled(
-                format!("[{} | ", start_str),
+                format!("[{} ", start_str),
                 Style::default().fg(Color::White),
             ),
             Span::styled(
@@ -258,7 +275,7 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
             let mut note_spans = vec![
                 Span::raw(" "),
                 Span::styled(
-                    format!("[{} | {}] ", start_str, fmt_duration(offset)),
+                    format!("[{} {}] ", start_str, fmt_duration(offset)),
                     Style::default().fg(Color::DarkGray),
                 ),
             ];
@@ -298,9 +315,9 @@ fn render(f: &mut ratatui::Frame, app: &mut App) {
         Style::default().fg(Color::Cyan),
     );
     let hint = if matches!(app.time_filter, TimeFilter::Days(_)) {
-        Span::styled("  f=text  -/+=days  q=quit", Style::default().fg(Color::DarkGray))
+        Span::styled("  f=filter  -/+=days  q=quit", Style::default().fg(Color::DarkGray))
     } else {
-        Span::styled("  f=text  +=days  q=quit", Style::default().fg(Color::DarkGray))
+        Span::styled("  f=filter  +=days  q=quit", Style::default().fg(Color::DarkGray))
     };
     let filter_line = Line::from(vec![text_label, time_label, hint]);
     f.render_widget(Paragraph::new(filter_line), chunks[1]);
