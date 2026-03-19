@@ -1,4 +1,4 @@
-use chrono::{Local, Utc};
+use chrono::{Local, TimeZone, Utc};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -86,17 +86,22 @@ impl App {
     }
 
     fn build_list_opts(&self) -> ListOptions {
-        let now = Utc::now();
         let text_filter = if self.text_filter.is_empty() {
             None
         } else {
             Some(self.text_filter.clone())
         };
         let (since, latest) = match &self.time_filter {
-            TimeFilter::Days(n) => (
-                Some(now - chrono::Duration::hours(*n as i64 * 24)),
-                None,
-            ),
+            TimeFilter::Days(n) => {
+                // Go back to 00:00:00 local time of (today - (n-1) days).
+                // n=1 → start of today, n=2 → start of yesterday, etc.
+                let target_date = Local::now().date_naive() - chrono::Duration::days(*n as i64 - 1);
+                let since = Local
+                    .from_local_datetime(&target_date.and_hms_opt(0, 0, 0).unwrap())
+                    .earliest()
+                    .map(|dt| dt.with_timezone(&Utc));
+                (since, None)
+            }
             TimeFilter::All => (None, None),
         };
         ListOptions { text_filter, since, latest }
@@ -119,10 +124,10 @@ impl App {
         self.sessions.iter().find(|s| s.end_time.is_none())
     }
 
-    fn exec<T, E: std::fmt::Display>(&mut self, result: Result<T, E>, ok_msg: impl Into<String>) {
+    fn update_status_on_operation_result<T: Into<String>, E: std::fmt::Display>(&mut self, result: Result<T, E>) {
         match result {
-            Ok(_) => {
-                self.status = ok_msg.into();
+            Ok(t) => {
+                self.status = t.into();
                 self.refresh_and_jump();
             }
             Err(e) => self.status = format!("Error: {e}"),
@@ -132,19 +137,19 @@ impl App {
     fn handle_start(&mut self, title: &str) {
         let result = start_timer(&self.db, title, Utc::now())
             .map(|r| format!("Started \"{}\"", r.new_session.title));
-        let msg = result.as_deref().unwrap_or("").to_string();
-        self.exec(result.map(|_| ()), msg);
+        self.update_status_on_operation_result(result);
     }
 
     fn handle_stop(&mut self) {
         let result = stop_timer(&self.db, Utc::now())
             .map(|s| format!("Stopped \"{}\"", s.title));
-        let msg = result.as_deref().unwrap_or("").to_string();
-        self.exec(result.map(|_| ()), msg);
+        self.update_status_on_operation_result(result);
     }
 
     fn handle_note(&mut self, text: &str) {
-        self.exec(add_note(&self.db, text, Utc::now()), "Note saved");
+        let result = add_note(&self.db, text, Utc::now())
+            .map(|_| format!("Note saved"));
+        self.update_status_on_operation_result(result);
     }
 
     fn cancel_input(&mut self) {
