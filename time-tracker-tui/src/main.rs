@@ -63,6 +63,8 @@ struct App {
     user_scrolled: bool,
     text_filter: String,
     time_filter: TimeFilter,
+    /// Max lines we can scroll up — updated each render frame.
+    max_scroll: u16,
 }
 
 impl App {
@@ -77,6 +79,7 @@ impl App {
             user_scrolled: false,
             text_filter: String::new(),
             time_filter: TimeFilter::Days(1),
+            max_scroll: 0,
         };
         app.refresh();
         app
@@ -195,7 +198,7 @@ fn highlight_spans<'a>(text: &'a str, term: &str, base_style: Style) -> Vec<Span
 
 // ── render ────────────────────────────────────────────────────────────────────
 
-fn render(f: &mut ratatui::Frame, app: &App) {
+fn render(f: &mut ratatui::Frame, app: &mut App) {
     let now = Utc::now();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -255,6 +258,9 @@ fn render(f: &mut ratatui::Frame, app: &App) {
     let inner_height = chunks[0].height.saturating_sub(2) as usize;
     let total_lines = all_lines.len();
     let auto_scroll = total_lines.saturating_sub(inner_height) as u16;
+    // Store max so the event loop can clamp scroll_offset before we get here.
+    app.max_scroll = auto_scroll;
+    app.scroll_offset = app.scroll_offset.min(auto_scroll);
     let scroll = if app.user_scrolled {
         auto_scroll.saturating_sub(app.scroll_offset)
     } else {
@@ -316,7 +322,7 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     loop {
-        terminal.draw(|f| render(f, &app))?;
+        terminal.draw(|f| render(f, &mut app))?;
 
         if event::poll(std::time::Duration::from_millis(500))? {
             if let Event::Key(key) = event::read()? {
@@ -353,7 +359,7 @@ fn main() -> io::Result<()> {
                             app.refresh();
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
-                            app.scroll_offset += 1;
+                            app.scroll_offset = (app.scroll_offset + 1).min(app.max_scroll);
                             app.user_scrolled = true;
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
